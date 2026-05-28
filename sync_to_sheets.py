@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import requests
 import gspread
 from google.oauth2.service_account import Credentials
@@ -18,49 +19,25 @@ GCP_JSON          = os.environ["GCP_SERVICE_ACCOUNT_JSON"]
 # ─────────────────────────────────────────────
 # DATE RANGE — always current month
 # ─────────────────────────────────────────────
-ist = pytz.timezone("Asia/Kolkata")
-now_ist = datetime.now(ist)
+ist       = pytz.timezone("Asia/Kolkata")
+now_ist   = datetime.now(ist)
 DATE_FROM = now_ist.strftime("%Y-%m-01")
 DATE_TO   = now_ist.strftime("%Y-%m-%d")
 
 # ─────────────────────────────────────────────
-# QUERIES — question ID, tab name, Metabase slug
+# QUERIES
 # ─────────────────────────────────────────────
 QUESTIONS = [
-    {
-        "id":       10574,
-        "slug":     "organic-funnel-bg-base-query",
-        "tab":      "Organic",
-    },
-    {
-        "id":       10508,
-        "slug":     "perf-funnel-bg",
-        "tab":      "Perf",
-    },
-    {
-        "id":       10433,
-        "slug":     "referral-base-logic",
-        "tab":      "Referral",
-    },
-    {
-        "id":       10744,
-        "slug":     "reactivation-funnel-logic-bg-main",
-        "tab":      "Reactivation",
-    },
-    {
-        "id":       10750,
-        "slug":     "masterclass-funnel-logic-bg",
-        "tab":      "MasterClass",
-    },
-    {
-        "id":       10745,
-        "slug":     "manual-assigned-funnel-logic-bg",
-        "tab":      "Manual Assignment",
-    },
+    {"id": 10574, "tab": "Organic"},
+    {"id": 10508, "tab": "Perf"},
+    {"id": 10433, "tab": "Referral"},
+    {"id": 10744, "tab": "Reactivation"},
+    {"id": 10750, "tab": "MasterClass"},
+    {"id": 10745, "tab": "Manual Assignment"},
 ]
 
 # ─────────────────────────────────────────────
-# STEP 1 — Get Metabase session token
+# STEP 1 — Metabase session token
 # ─────────────────────────────────────────────
 def get_metabase_token():
     print("Authenticating with Metabase...")
@@ -70,23 +47,16 @@ def get_metabase_token():
         timeout=30,
     )
     resp.raise_for_status()
-    token = resp.json()["id"]
     print("  Auth successful.")
-    return token
+    return resp.json()["id"]
 
 
 # ─────────────────────────────────────────────
-# STEP 2 — Run a Metabase question and get rows
+# STEP 2 — Run question with retry on timeout
 # ─────────────────────────────────────────────
-def run_question(token, question_id, date_from, date_to):
-    """
-    Calls the Metabase /api/card/:id/query endpoint with date parameters.
-    Returns (headers_list, rows_list).
-    """
+def run_question(token, question_id, date_from, date_to, max_retries=3):
     url     = f"{METABASE_URL}/api/card/{question_id}/query"
     headers = {"X-Metabase-Session": token, "Content-Type": "application/json"}
-
-    # Pass date filters as template tag parameters
     payload = {
         "parameters": [
             {
@@ -102,78 +72,82 @@ def run_question(token, question_id, date_from, date_to):
         ]
     }
 
-    print(f"  Running question {question_id} ({date_from} → {date_to})...")
-    resp = requests.post(url, headers=headers, json=payload, timeout=120)
-    resp.raise_for_status()
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"  Running question {question_id} (attempt {attempt}/{max_retries})...")
+            resp = requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=300,          # 5 minutes — handles heavy queries
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            cols = [col["display_name"] for col in data["data"]["cols"]]
+            rows = data["data"]["rows"]
+            print(f"  Got {len(rows)} rows, {len(cols)} columns.")
+            return cols, rows
 
-    data = resp.json()
-    cols = [col["display_name"] for col in data["data"]["cols"]]
-    rows = data["data"]["rows"]
-    print(f"  Got {len(rows)} rows, {len(cols)} columns.")
-    return cols, rows
+        except requests.exceptions.Timeout:
+            if attempt < max_retries:
+                wait = 30 * attempt   # 30s, then 60s
+                print(f"  Timed out. Waiting {wait}s before retry...")
+                time.sleep(wait)
+            else:
+                print(f"  All {max_retries} attempts timed out. Giving up.")
+                raise
+
+        except requests.exceptions.HTTPError as e:
+            print(f"  HTTP error: {e}")
+            raise
 
 
 # ─────────────────────────────────────────────
-# STEP 3 — Write results to a Google Sheet tab
+# STEP 3 — Write to Google Sheet tab
 # ─────────────────────────────────────────────
 def write_to_sheet(gc, sheet_id, tab_name, cols, rows, timestamp_str):
     sh = gc.open_by_key(sheet_id)
 
-    # Get or create the worksheet
     try:
         ws = sh.worksheet(tab_name)
     except gspread.exceptions.WorksheetNotFound:
         ws = sh.add_worksheet(title=tab_name, rows=5000, cols=26)
         print(f"  Created new tab: '{tab_name}'")
 
-    # ── Clear columns A:T (columns 1-20) ──────────────────────
-    # We clear the full sheet first, then write fresh data
+    # Clear columns A:T
     ws.batch_clear(["A:T"])
-    print(f"  Cleared columns A:T on tab '{tab_name}'.")
+    print(f"  Cleared A:T on tab '{tab_name}'.")
 
-    # ── Build the full payload to write at once ────────────────
+    # Build rows: timestamp → blank → headers → data
     all_rows = []
-
-    # Row 1 — timestamp label + value
     all_rows.append([f"Last updated: {timestamp_str}"] + [""] * (len(cols) - 1))
-
-    # Row 2 — blank separator
     all_rows.append([""] * len(cols))
-
-    # Row 3 — column headers
     all_rows.append(cols)
-
-    # Rows 4+ — data
     for row in rows:
-        # Convert any non-serialisable types to string
-        cleaned = [str(cell) if cell is not None else "" for cell in row]
-        all_rows.append(cleaned)
+        all_rows.append([str(cell) if cell is not None else "" for cell in row])
 
-    # Write everything in a single API call starting at A1
-    ws.update("A1", all_rows, value_input_option="USER_ENTERED")
-    print(f"  Written {len(rows)} data rows to tab '{tab_name}'.")
+    # FIX: values first, range_name second (gspread v6+)
+    ws.update(all_rows, "A1", value_input_option="USER_ENTERED")
+    print(f"  Written {len(rows)} data rows to '{tab_name}'.")
 
 
 # ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
 def main():
-    # Current IST timestamp for the "Last updated" label
     ist       = pytz.timezone("Asia/Kolkata")
     now_ist   = datetime.now(ist)
-    timestamp = now_ist.strftime("%d %b %Y, %I:%M %p IST")   # e.g. 28 May 2026, 10:45 AM IST
+    timestamp = now_ist.strftime("%d %b %Y, %I:%M %p IST")
 
     print(f"\n=== Charter-wise MECE Funnel Sync ===")
     print(f"Date range : {DATE_FROM} → {DATE_TO}")
     print(f"Timestamp  : {timestamp}\n")
 
-    # ── Metabase auth ──────────────────────────────────────────
     token = get_metabase_token()
 
-    # ── Google Sheets auth ─────────────────────────────────────
     print("Authenticating with Google Sheets...")
     creds_dict = json.loads(GCP_JSON)
-    scopes     = [
+    scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
     ]
@@ -181,7 +155,6 @@ def main():
     gc    = gspread.authorize(creds)
     print("  Google auth successful.\n")
 
-    # ── Process each question ──────────────────────────────────
     for q in QUESTIONS:
         print(f"[{q['tab']}] Question {q['id']}")
         try:
