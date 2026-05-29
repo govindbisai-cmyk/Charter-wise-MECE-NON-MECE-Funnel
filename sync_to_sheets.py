@@ -28,6 +28,7 @@ DATE_TO   = now_ist.strftime("%Y-%m-%d")
 # QUERIES
 # ─────────────────────────────────────────────
 QUESTIONS = [
+    {"id": 10742, "tab": "Overall Funnel BG"}
     {"id": 10574, "tab": "Organic"},
     {"id": 10508, "tab": "Perf"},
     {"id": 10433, "tab": "Referral"},
