@@ -7,7 +7,7 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pytz
 
-# ─────────────────────────────────────────────  
+# ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
 METABASE_URL      = os.environ["METABASE_URL"].rstrip("/")
@@ -21,8 +21,8 @@ GCP_JSON          = os.environ["GCP_SERVICE_ACCOUNT_JSON"]
 # ─────────────────────────────────────────────
 ist       = pytz.timezone("Asia/Kolkata")
 now_ist   = datetime.now(ist)
-DATE_FROM = now_ist.strftime("%Y-%m-01")
-DATE_TO   = now_ist.strftime("%Y-%m-%d")
+DATE_FROM = "2026-05-01"
+DATE_TO   = "2026-05-31"
 
 # ─────────────────────────────────────────────
 # QUERIES — 7 questions, one per sheet tab
@@ -149,7 +149,7 @@ def main():
     print("Authenticating with Google Sheets...")
     creds_dict = json.loads(GCP_JSON)
     scopes = [
-        "https://www.googleapis.com/auth/spreadsheets", 
+        "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
     ]
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
