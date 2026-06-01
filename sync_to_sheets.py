@@ -149,7 +149,7 @@ def main():
     print("Authenticating with Google Sheets...")
     creds_dict = json.loads(GCP_JSON)
     scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/spreadsheets", 
         "https://www.googleapis.com/auth/drive",
     ]
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
