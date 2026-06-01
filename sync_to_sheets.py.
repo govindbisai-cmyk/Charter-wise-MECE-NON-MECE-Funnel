@@ -7,7 +7,7 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pytz
 
-# ───────────────────────────────────────────── 
+# ─────────────────────────────────────────────  
 # CONFIG
 # ─────────────────────────────────────────────
 METABASE_URL      = os.environ["METABASE_URL"].rstrip("/")
