@@ -28,7 +28,7 @@ DATE_TO   = now_ist.strftime("%Y-%m-%d")
 # QUERIES — 7 questions, one per sheet tab
 # ─────────────────────────────────────────────
 QUESTIONS = [
-    {"id": 10742, "tab": "Overall Funnel"},
+    {"id": 10742, "tab": "Overall Funnel BG"},
     {"id": 10574, "tab": "Organic"},
     {"id": 10508, "tab": "Perf"},
     {"id": 10433, "tab": "Referral"},
