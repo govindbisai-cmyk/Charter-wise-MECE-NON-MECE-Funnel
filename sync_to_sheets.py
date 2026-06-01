@@ -18,7 +18,7 @@ GCP_JSON          = os.environ["GCP_SERVICE_ACCOUNT_JSON"]
 
 # ─────────────────────────────────────────────
 # DATE RANGE — always current month
-# ───────────────────────────────────────────── 
+# ─────────────────────────────────────────────
 ist       = pytz.timezone("Asia/Kolkata")
 now_ist   = datetime.now(ist)
 DATE_FROM = now_ist.strftime("%Y-%m-01")
