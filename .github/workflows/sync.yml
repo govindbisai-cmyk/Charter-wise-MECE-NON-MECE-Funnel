@@ -1,35 +1,29 @@
 name: Charter-wise MECE Funnel Sync v2
 
 on:
-  # ── Automatic: runs every day at 9:00 AM IST (3:30 AM UTC) ──
   schedule:
     - cron: "30 3 * * *"
-
-  # ── Manual: trigger from the GitHub Actions tab anytime ──────
   workflow_dispatch:
 
 jobs:
   sync:
-    name: Sync Metabase → Google Sheets
+    name: Sync Metabase to Google Sheets
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Pull your repo code
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          ref: main
 
-      # 2. Set up Python
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 3. Install dependencies from requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # 4. Run the sync script
-      #    All secrets are injected as environment variables
       - name: Run sync
         env:
           METABASE_URL:             ${{ secrets.METABASE_URL }}
