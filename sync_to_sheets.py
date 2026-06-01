@@ -8,7 +8,7 @@ from datetime import datetime
 import pytz
 
 # ─────────────────────────────────────────────
-# CONFIG — all values come from GitHub Secrets
+# CONFIG
 # ─────────────────────────────────────────────
 METABASE_URL      = os.environ["METABASE_URL"].rstrip("/")
 METABASE_USERNAME = os.environ["METABASE_USERNAME"]
@@ -25,7 +25,7 @@ DATE_FROM = now_ist.strftime("%Y-%m-01")
 DATE_TO   = now_ist.strftime("%Y-%m-%d")
 
 # ─────────────────────────────────────────────
-# QUERIES
+# QUERIES — 7 questions, one per sheet tab
 # ─────────────────────────────────────────────
 QUESTIONS = [
     {"id": 10742, "tab": "Overall Funnel"},
@@ -80,7 +80,7 @@ def run_question(token, question_id, date_from, date_to, max_retries=3):
                 url,
                 headers=headers,
                 json=payload,
-                timeout=300,          # 5 minutes — handles heavy queries
+                timeout=300,   # 5 minutes per query
             )
             resp.raise_for_status()
             data = resp.json()
@@ -119,7 +119,7 @@ def write_to_sheet(gc, sheet_id, tab_name, cols, rows, timestamp_str):
     ws.batch_clear(["A:T"])
     print(f"  Cleared A:T on tab '{tab_name}'.")
 
-    # Build rows: timestamp → blank → headers → data
+    # Row 1: timestamp | Row 2: blank | Row 3: headers | Row 4+: data
     all_rows = []
     all_rows.append([f"Last updated: {timestamp_str}"] + [""] * (len(cols) - 1))
     all_rows.append([""] * len(cols))
@@ -127,7 +127,7 @@ def write_to_sheet(gc, sheet_id, tab_name, cols, rows, timestamp_str):
     for row in rows:
         all_rows.append([str(cell) if cell is not None else "" for cell in row])
 
-    # FIX: values first, range_name second (gspread v6+)
+    # gspread v6+: values first, range_name second
     ws.update(all_rows, "A1", value_input_option="USER_ENTERED")
     print(f"  Written {len(rows)} data rows to '{tab_name}'.")
 
