@@ -17,15 +17,14 @@ SHEET_ID          = os.environ["GOOGLE_SHEET_ID"]
 GCP_JSON          = os.environ["GCP_SERVICE_ACCOUNT_JSON"]
 
 # ─────────────────────────────────────────────
-# DATE RANGE — always current month
+# DATE RANGE — hardcoded for May 2026
+# Change back to dynamic lines below after May run
 # ─────────────────────────────────────────────
-ist       = pytz.timezone("Asia/Kolkata")
-now_ist   = datetime.now(ist)
 DATE_FROM = "2026-05-01"
 DATE_TO   = "2026-05-31"
 
 # ─────────────────────────────────────────────
-# QUERIES — 7 questions, one per sheet tab
+# QUERIES
 # ─────────────────────────────────────────────
 QUESTIONS = [
     {"id": 10742, "tab": "Overall Funnel"},
@@ -53,20 +52,27 @@ def get_metabase_token():
 
 
 # ─────────────────────────────────────────────
-# STEP 2 — Run question with retry on timeout
+# STEP 2 — Run question via URL params (same
+# as how Metabase passes dates in the browser)
 # ─────────────────────────────────────────────
 def run_question(token, question_id, date_from, date_to, max_retries=3):
-    url     = f"{METABASE_URL}/api/card/{question_id}/query"
-    headers = {"X-Metabase-Session": token, "Content-Type": "application/json"}
+    # Use the same URL param style as your Metabase question URLs:
+    # /api/card/:id/query?date_from=2026-05-01&date_to=2026-05-31
+    url = f"{METABASE_URL}/api/card/{question_id}/query/json"
+    headers = {
+        "X-Metabase-Session": token,
+        "Content-Type": "application/json",
+    }
+    # Pass date params the way Metabase native questions expect them
     payload = {
         "parameters": [
             {
-                "type":   "date/single",
+                "type":   "category",
                 "target": ["variable", ["template-tag", "date_from"]],
                 "value":  date_from,
             },
             {
-                "type":   "date/single",
+                "type":   "category",
                 "target": ["variable", ["template-tag", "date_to"]],
                 "value":  date_to,
             },
@@ -80,22 +86,38 @@ def run_question(token, question_id, date_from, date_to, max_retries=3):
                 url,
                 headers=headers,
                 json=payload,
-                timeout=300,   # 5 minutes per query
+                timeout=300,
             )
             resp.raise_for_status()
             data = resp.json()
-            cols = [col["display_name"] for col in data["data"]["cols"]]
-            rows = data["data"]["rows"]
-            print(f"  Got {len(rows)} rows, {len(cols)} columns.")
-            return cols, rows
+
+            # /query/json returns a list of dicts directly
+            if isinstance(data, list):
+                if len(data) == 0:
+                    print(f"  Got 0 rows.")
+                    return [], []
+                cols = list(data[0].keys())
+                rows = [list(row.values()) for row in data]
+                print(f"  Got {len(rows)} rows, {len(cols)} columns.")
+                return cols, rows
+
+            # Fallback: standard /query response format
+            if "data" in data:
+                cols = [col["display_name"] for col in data["data"]["cols"]]
+                rows = data["data"]["rows"]
+                print(f"  Got {len(rows)} rows, {len(cols)} columns.")
+                return cols, rows
+
+            print(f"  Unexpected response format: {str(data)[:200]}")
+            raise ValueError("Unexpected Metabase response format")
 
         except requests.exceptions.Timeout:
             if attempt < max_retries:
-                wait = 30 * attempt   # 30s, then 60s
+                wait = 30 * attempt
                 print(f"  Timed out. Waiting {wait}s before retry...")
                 time.sleep(wait)
             else:
-                print(f"  All {max_retries} attempts timed out. Giving up.")
+                print(f"  All {max_retries} attempts timed out.")
                 raise
 
         except requests.exceptions.HTTPError as e:
@@ -115,19 +137,19 @@ def write_to_sheet(gc, sheet_id, tab_name, cols, rows, timestamp_str):
         ws = sh.add_worksheet(title=tab_name, rows=5000, cols=26)
         print(f"  Created new tab: '{tab_name}'")
 
-    # Clear columns A:T
     ws.batch_clear(["A:T"])
     print(f"  Cleared A:T on tab '{tab_name}'.")
 
-    # Row 1: timestamp | Row 2: blank | Row 3: headers | Row 4+: data
     all_rows = []
-    all_rows.append([f"Last updated: {timestamp_str}"] + [""] * (len(cols) - 1))
-    all_rows.append([""] * len(cols))
-    all_rows.append(cols)
-    for row in rows:
-        all_rows.append([str(cell) if cell is not None else "" for cell in row])
+    if cols:
+        all_rows.append([f"Last updated: {timestamp_str}"] + [""] * (len(cols) - 1))
+        all_rows.append([""] * len(cols))
+        all_rows.append(cols)
+        for row in rows:
+            all_rows.append([str(cell) if cell is not None else "" for cell in row])
+    else:
+        all_rows.append([f"Last updated: {timestamp_str} — No data returned"])
 
-    # gspread v6+: values first, range_name second
     ws.update(all_rows, "A1", value_input_option="USER_ENTERED")
     print(f"  Written {len(rows)} data rows to '{tab_name}'.")
 
