@@ -12,7 +12,7 @@ import pytz
 # ─────────────────────────────────────────────
 METABASE_URL      = os.environ["METABASE_URL"].rstrip("/")
 METABASE_USERNAME = os.environ["METABASE_USERNAME"]
-METABASE_PASSWORD = os.environ["METABASE_PASSWORD"]
+METABASE_PASSWORD = os.environ["METABASE_PASSWORD"] 
 SHEET_ID          = os.environ["GOOGLE_SHEET_ID"]
 GCP_JSON          = os.environ["GCP_SERVICE_ACCOUNT_JSON"]
 
