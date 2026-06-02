@@ -5,11 +5,11 @@ from google.oauth2.service_account import Credentials
 # ─────────────────────────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────────────────────────
-METABASE_BASE_URL = os.environ["METABASE_BASE_URL"]
+METABASE_BASE_URL = os.environ["METABASE_URL"].rstrip("/")
 METABASE_USERNAME = os.environ["METABASE_USERNAME"]
 METABASE_PASSWORD = os.environ["METABASE_PASSWORD"]
-GCP_JSON          = os.environ["GCP_JSON"]
-SHEET_ID          = os.environ["SHEET_ID"]
+GCP_JSON          = os.environ["GCP_SERVICE_ACCOUNT_JSON"]
+SHEET_ID          = os.environ["GOOGLE_SHEET_ID"]
 
 # Dynamic MTD dates
 _today     = date.today()
