@@ -85,7 +85,7 @@ def run_question(token, question_id, date_from, date_to):
         f"{METABASE_URL}/api/card/{question_id}/query",
         headers=headers,
         json=payload,
-        timeout=60,
+        timeout=600,
     )
     resp.raise_for_status()
     data = resp.json()
